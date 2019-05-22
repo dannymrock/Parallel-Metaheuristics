@@ -4,15 +4,14 @@ import time
 import multiprocessing as mp
 import sys
 
-max_iters = 200
+max_iters = 1000
 size = 20
 neigh_size = int(size*(size-1)/2)
 tabu_tenure = 22
 
-
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
 # zero-base:                (7,15,13,16,3,10,2,18,6,8,0,14,5,12,9 ,1,4,19,17,11)
-flow= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
+distance= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
        [23,0,8,33,42,45,10,25,48,13,51,15,32,27,26,37,738,789,772,772],
        [29,8,0,40,49,52,3,33,51,21,55,7,35,31,25,45,732,782,765,765],
        [36,33,40,0,10,17,40,9,34,27,32,46,23,44,35,19,750,803,787,784],
@@ -33,7 +32,7 @@ flow= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
        [795,772,765,787,787,781,762,786,758,784,764,759,764,795,753,803,86,32,0,77],
        [795,772,765,784,782,776,762,784,753,784,758,759,760,796,751,801,34,53,77,0]]
 
-distance=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0, 378, 239, 1, 1],
+flow=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0, 378, 239, 1, 1],
           [0, 0, 336, 0, 1, 0, 0, 3, 0, 1, 2109, 0, 130, 0, 0, 0, 2, 0, 0, 241],
           [5134, 0, 0, 0, 5811, 0, 0, 458, 11, 127, 0, 18012, 28, 0, 7, 0, 97, 4, 23, 0],
           [3896, 0, 0, 0, 2, 41453, 206, 6590, 16724, 0, 0, 375, 0, 0, 2474, 1868, 43487, 0, 0, 0],
@@ -62,14 +61,15 @@ def compute_cost(sol):
   return cost
 
 def swap_moves(sol_n):
-  # The last two positions of the vector are used to keep variable indexes
+  # The last two positions of the vector are used to keep the swaped
+  # variables' indexes
   neighbors = np.zeros((neigh_size, size+2), dtype=int)
   idx=0
   for i in range(size):
     for j in range(i+1, size):
       # performing swap
       sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
-      # storing neighborhood in "neighbors" data structure
+      # storing neighbor in "neighbors" data structure
       neighbors[idx, :-2] = sol_n
       neighbors[idx, -2:] = [i,j]
       # undoing swap
@@ -78,10 +78,10 @@ def swap_moves(sol_n):
   return neighbors
 
 def run_search(seed, output):
-  rand =random.Random(seed)
+  rand = random.Random(seed)
   num_iter = 0
   curnt_sol = rand.sample(range(size), size)
-  best_soln = curnt_sol
+  best_sol = curnt_sol
   best_cost = curnt_cost = compute_cost(curnt_sol)
   print("Initial: %s cost %s " % (curnt_sol, best_cost))
 
@@ -102,45 +102,52 @@ def run_search(seed, output):
     done = False
     # for loop to select best move
     # TODO: if there are two o more best moves, select randomly one of them
-    for j in rank:
-      swap = neighbors[j, -2:]
+    for index in rank:
+      swap = neighbors[index, -2:]
       id_i=swap[0]
       id_j=swap[1]
-      not_tabu =  tabu_list[id_i][neighbors[j,id_j]] < num_iter
-      not_tabu |= tabu_list[id_j][neighbors[j,id_i]] < num_iter  
+      not_tabu =  tabu_list[id_i][neighbors[index,id_j]] < num_iter
+      not_tabu |= tabu_list[id_j][neighbors[index,id_i]] < num_iter  
       if not_tabu:
-        curnt_sol =  neighbors[j,:-2].tolist()
-        curnt_cost = cost[j]
+        curnt_sol =  neighbors[index,:-2].tolist()
+        curnt_cost = cost[index]
         done = True
         if curnt_cost < best_cost:
           best_sol = curnt_sol
           best_cost = curnt_cost
-          print("Found best sol. so far %s cost: %s iter= %s" % (best_soln, best_cost, num_iter))
+          print("Found best sol. so far %s cost: %s iter= %s"
+                % (best_sol, best_cost, num_iter))
 
         # update tabu list
-        tabu_list[id_i][neighbors[j,id_j]] = num_iter + tabu_tenure
-        tabu_list[id_j][neighbors[j,id_i]] = num_iter + tabu_tenure
+        t1 = round(rand.uniform(0.8, 1.2)*tabu_tenure)
+        t2 = round(rand.uniform(0.8, 1.2)*tabu_tenure) 
+        tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
+        tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
         break
       else:
         # print("is Tabu")
         # aspiration criterium
-        if cost[j] < best_cost:
-          best_sol = curnt_sol =  neighbors[j,:-2].tolist()
-          best_cost = curnt_cost = cost[j]
-          print("Aspired: found best sol. so far %s cost: %s iter= %s" % (best_soln, best_cost, num_iter))
-          # update tabu list
-          tabu_list[id_i][neighbors[j,id_j]] = num_iter + tabu_tenure
-          tabu_list[id_j][neighbors[j,id_i]] = num_iter + tabu_tenure
+        if cost[index] < best_cost:
+          best_sol = curnt_sol =  neighbors[index,:-2].tolist()
+          best_cost = curnt_cost = cost[index]
+          print("Aspired: found best sol. so far %s cost: %s iter= %s"
+                % (best_sol, best_cost, num_iter))
+
+          t1 = round(rand.uniform(0.8, 1.2)*tabu_tenure)
+          t2 = round(rand.uniform(0.8, 1.2)*tabu_tenure) 
+          tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
+          tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
           done = True
           break
+        
     if not done:
-      print("Any monvement has been done on this iteration!!!")
+      print("Any movement has been done on this iteration!!!")
     num_iter+=1
     if num_iter % 100 == 0:
       print(num_iter,curnt_cost)
 
-  print("Best sol %s cost: %s max_iters= %s" % (best_soln, best_cost , num_iter))
-  output.put((best_soln, best_cost, num_iter))
+  print("Best sol %s cost: %s max_iters= %s" % (best_sol, best_cost , num_iter))
+  output.put((best_sol, best_cost, num_iter))
 
 # calling the main function, where the program starts running
 if __name__== "__main__":

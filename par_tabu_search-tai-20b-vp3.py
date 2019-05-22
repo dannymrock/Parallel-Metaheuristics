@@ -1,10 +1,13 @@
 import numpy as np
 import random
 import time
+import multiprocessing as mp
+import sys
 
-max_iters = 100
+max_iters = 1000
 size = 20
 neigh_size = int(size*(size-1)/2)
+tabu_tenure = 22
 
 
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
@@ -59,64 +62,123 @@ def compute_cost(sol):
   return cost
 
 def swap_moves(sol_n):
-    neighbors = np.zeros((neigh_size, size), dtype=int)
-    idx=0
-    for i in range(size):
-        for j in range(i+1, size):
-          sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
-          neighbors[idx] = sol_n
-          sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
-          idx=idx+1
-    return neighbors
+  # The last two positions of the vector are used to keep the swaped
+  # variables' indexes
+  neighbors = np.zeros((neigh_size, size+2), dtype=int)
+  idx=0
+  for i in range(size):
+    for j in range(i+1, size):
+      # performing swap
+      sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
+      # storing neighbor in "neighbors" data structure
+      neighbors[idx, :-2] = sol_n
+      neighbors[idx, -2:] = [i,j]
+      # undoing swap
+      sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
+      idx+=1
+  return neighbors
 
-def run_search():
-    num_iter = 0
-    curnt_sol = random.sample(range(size), size)
-    best_soln = curnt_sol
-    best_cost = curnt_cost = compute_cost(curnt_sol)
-    print("Initial: %s cost %s " % (curnt_sol, best_cost))
+def run_search(seed, output):
+  rand = random.Random(seed)
+  num_iter = 0
+  curnt_sol = rand.sample(range(size), size)
+  best_soln = curnt_sol
+  best_cost = curnt_cost = compute_cost(curnt_sol)
+  print("Initial: %s cost %s " % (curnt_sol, best_cost))
 
-    # flag to signal the algorithm's termination
-    flag_end = False
-    while ((num_iter < max_iters) and (not flag_end)):
+  tabu_list = np.full((size, size), -1, dtype=int)
+  
+  while num_iter < max_iters:
+    # get all moves into neighbors
+    neighbors = swap_moves(curnt_sol)  
+    # holds the costs of the neighbors
+    cost = np.zeros((len(neighbors)))
 
-        neighbors = swap_moves(curnt_sol)  # make a move to neighbors
+    # evaluate the cost of all candidate neighbors
+    for index in range(len(neighbors)):
+      cost[index] = compute_cost(neighbors[index, :-2])  
 
-        # holds the cost of the neighbors
-        cost = np.zeros((len(neighbors)))
+    rank = np.argsort(cost)  # sorted index based on cost
 
-        # evaluate the cost of the candidate neighbors
-        for index in range(len(neighbors)):
-            cost[index] = compute_cost(neighbors[index])  
+    done = False
+    # for loop to select best move
+    # TODO: if there are two o more best moves, select randomly one of them
+    for index in rank:
+      swap = neighbors[index, -2:]
+      id_i=swap[0]
+      id_j=swap[1]
+      not_tabu =  tabu_list[id_i][neighbors[index,id_j]] < num_iter
+      not_tabu |= tabu_list[id_j][neighbors[index,id_i]] < num_iter  
+      if not_tabu:
+        curnt_sol =  neighbors[index,:-2].tolist()
+        curnt_cost = cost[index]
+        done = True
+        if curnt_cost < best_cost:
+          best_sol = curnt_sol
+          best_cost = curnt_cost
+          print("Found best sol. so far %s cost: %s iter= %s"
+                % (best_soln, best_cost, num_iter))
 
-        rank = np.argsort(cost)  # sorted index based on cost
-
-        # flag to detect an improvement in the first best movement
-        first_best = False
+        # update tabu list
+        tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
+        tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
+        break
+      else:
+        # print("is Tabu")
+        # aspiration criterium
+        if cost[index] < best_cost:
+          best_sol = curnt_sol =  neighbors[index,:-2].tolist()
+          best_cost = curnt_cost = cost[index]
+          print("Aspired: found best sol. so far %s cost: %s iter= %s"
+                % (best_soln, best_cost, num_iter))
+          # update tabu list
+          tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
+          tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
+          done = True
+          break
         
-        # for loop to select best move
-        # TODO: if there are two o more best moves, select randomly one of them
-        for index in rank:
-            curnt_cost = cost[index]
-            if  curnt_cost <  best_cost:
-                curnt_sol = best_soln = neighbors[index].tolist()
-                best_cost = curnt_cost
-                print("Found better sol %s cost: %s " % (best_soln, best_cost))
-                first_best = True
+    if not done:
+      print("Any movement has been done on this iteration!!!")
+    num_iter+=1
+    if num_iter % 100 == 0:
+      print(num_iter,curnt_cost)
 
-            if (not first_best):
-                print("Local minimum found!!")
-                flag_end = True
-                break
-        num_iter+=1
-
-    print("Best sol %s cost: %s max_iters= %s"
-          % (best_soln, best_cost , num_iter))
+  print("Best sol %s cost: %s max_iters= %s" % (best_soln, best_cost , num_iter))
+  output.put((best_soln, best_cost, num_iter))
 
 # calling the main function, where the program starts running
 if __name__== "__main__":
+
+  # Get number of cores    
+  cores = mp.cpu_count()
+  print("Number of processors: ", cores)
+
+  # Set random seed
+  seed = input("Type a seed for your run (default: current system time): ")
+  if seed == '':
+    seed = int(time.time())   
+  random.seed(seed)
+  print("Seed:", seed)
+        
+  #Initialize Pool
+  output = mp.Queue()
+
+  # Create parallel activities
+  processes = [mp.Process(target=run_search, args=(random.randrange(sys.maxsize),output)) for x in range(cores)]
+
   start = time.time()
-  run_search()
+  for p in processes:
+    p.start()
+    
+  for p in processes:
+    p.join()
+
   end = time.time()
-  print("time: %.4f s" % (end - start))
+  print("time: %.4f s\n" % (end - start))
+
+
+  print("\nEnd parallel execution, results:")
+  for p in processes:
+    result = output.get()
+    print(p, result)
   

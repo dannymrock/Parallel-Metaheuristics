@@ -5,7 +5,7 @@ import sys
 
 ended_tasks=0
 
-def local_search (seed, output):
+def dummy_func (seed, output):
     rand = random.Random(seed)
     for i in xrange(1,1000000000):
         x = 234.23423/i     
@@ -27,7 +27,7 @@ print("Seed:", seed)
 output = mp.Queue()
 
 # Create parallel activities
-processes = [mp.Process(target=local_search, args=(random.randrange(sys.maxint),output)) for x in range(cores)]
+processes = [mp.Process(target=dummy_func, args=(random.randrange(sys.maxint),output)) for x in range(cores)]
 
 for p in processes:
     p.start()

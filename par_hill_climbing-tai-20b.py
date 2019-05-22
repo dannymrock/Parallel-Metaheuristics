@@ -99,10 +99,10 @@ def run_search(seed, output):
 
         # for loop to select best move 
         # TODO: if there are two o more best moves, select randomly one of them
-        for j in rank:
-            curnt_cost = cost[j]
+        for index in rank:
+            curnt_cost = cost[index]
             if  curnt_cost <  best_cost:
-                curnt_sol = best_soln = neighbors[j].tolist()
+                curnt_sol = best_soln = neighbors[index].tolist()
                 best_cost = curnt_cost
                 print("Found better sol %s cost: %s " % (best_soln, best_cost))
                 first_best = True
