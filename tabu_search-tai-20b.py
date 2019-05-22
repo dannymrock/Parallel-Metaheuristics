@@ -6,8 +6,9 @@ max_iters = 1000
 size = 20
 neigh_size = int(size*(size-1)/2)
 tabu_tenure = 22
+target = 122455319
 
-
+# http://anjos.mgi.polymtl.ca/qaplib/inst.html#Ta
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
 # zero-base:                (7,15,13,16,3,10,2,18,6,8,0,14,5,12,9 ,1,4,19,17,11)
 distance= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
@@ -75,16 +76,17 @@ def swap_moves(sol_n):
       idx+=1
   return neighbors
 
-def run_search():
+def run_search(seed):
+  rand = random.Random(seed)
   num_iter = 0
-  curnt_sol = random.sample(range(size), size)
+  curnt_sol = rand.sample(range(size), size)
   best_sol= curnt_sol
   best_cost = curnt_cost = compute_cost(curnt_sol)
   print("Initial: %s cost %s " % (curnt_sol, best_cost))
 
   tabu_list = np.full((size, size), -1, dtype=int)
   
-  while num_iter < max_iters:
+  while (num_iter < max_iters) & (curnt_cost > target):
     # get all moves into neighbors
     neighbors = swap_moves(curnt_sol)  
     # holds the costs of the neighbors
@@ -119,8 +121,8 @@ def run_search():
                 % (best_sol, best_cost, num_iter))
 
         # update tabu list
-        t1 = round(random.uniform(0.8, 1.2)*tabu_tenure)
-        t2 = round(random.uniform(0.8, 1.2)*tabu_tenure) 
+        t1 = round(rand.uniform(0.8, 1.2)*tabu_tenure)
+        t2 = round(rand.uniform(0.8, 1.2)*tabu_tenure) 
         tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
         tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
         break
@@ -135,8 +137,8 @@ def run_search():
           print("Aspired: found best sol. so far %s cost: %s iter= %s"
                 % (best_sol, best_cost, num_iter))
           # update tabu list
-          t1 = round(random.uniform(0.8, 1.2)*tabu_tenure)
-          t2 = round(random.uniform(0.8, 1.2)*tabu_tenure) 
+          t1 = round(rand.uniform(0.8, 1.2)*tabu_tenure)
+          t2 = round(rand.uniform(0.8, 1.2)*tabu_tenure) 
           tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
           tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
           done = True
@@ -153,8 +155,14 @@ def run_search():
 
 # calling the main function, where the program starts running
 if __name__== "__main__":
+  seed = raw_input("Type a seed for your run (default: current system time): ")
+  if seed == '':
+    seed = int(time.time())   
+  random.seed(seed)
+  print("Seed:", seed)
+ 
   start = time.time()
-  run_search()
+  run_search(seed)
   end = time.time()
   print("time: %.4f s" % (end - start))
   

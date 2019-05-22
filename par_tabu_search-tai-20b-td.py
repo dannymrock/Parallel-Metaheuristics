@@ -78,7 +78,7 @@ def swap_moves(sol_n):
       idx+=1
   return neighbors
 
-def run_search(seed, output):
+def run_search(seed, output, v):
   rand = random.Random(seed)
   num_iter = 0
   curnt_sol = rand.sample(range(size), size)
@@ -88,7 +88,7 @@ def run_search(seed, output):
 
   tabu_list = np.full((size, size), -1, dtype=int)
   
-  while (num_iter < max_iters) & (curnt_cost > target):
+  while (num_iter < max_iters) & (curnt_cost > target) & (v.value == 0):
     # get all moves into neighbors
     neighbors = swap_moves(curnt_sol)  
     # holds the costs of the neighbors
@@ -153,6 +153,7 @@ def run_search(seed, output):
       print(num_iter,curnt_cost)
 
   print("Best sol %s cost: %s max_iters= %s" % (best_sol, best_cost , num_iter))
+  v.value = 1
   output.put((best_sol, best_cost, num_iter))
 
 # calling the main function, where the program starts running
@@ -173,8 +174,11 @@ if __name__== "__main__":
   #Initialize Pool
   output = mp.Queue()
 
+  # Value to detect termination
+  v = mp.Value('i', 0)
+  v.value = 0
   # Create parallel activities
-  processes = [mp.Process(target=run_search, args=(random.randrange(sys.maxint),output)) for x in range(cores)]
+  processes = [mp.Process(target=run_search, args=(random.randrange(sys.maxint),output, v)) for x in range(cores)]
 
   start = time.time()
   for p in processes:
