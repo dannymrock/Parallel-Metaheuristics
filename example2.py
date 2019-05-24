@@ -12,29 +12,32 @@ def dummy_func (seed, output):
     output.put(x)
 #========================================
 
-# Get number of cores    
-cores = mp.cpu_count()
-print("Number of processors: ", cores)
+if __name__ == '__main__':
+    # Get number of cores    
+    cores = mp.cpu_count()
+    print("Number of processors: ", cores)
 
-# Set random seed
-seed = raw_input("Type a seed for your run (default: current system time): ")
-if seed == '':
-    seed = int(time.time())   
-random.seed(seed)
-print("Seed:", seed)
+    # Set random seed
+    seed = raw_input("Type a seed for your run (default: current system time): ")
+    if seed == '':
+        seed = int(time.time())   
+    random.seed(seed)
+    print("Seed:", seed)
 
-#Initialize Pool
-output = mp.Queue()
+    #Initialize Pool
+    output = mp.Queue()
 
-# Create parallel activities
-processes = [mp.Process(target=dummy_func, args=(random.randrange(sys.maxint),output)) for x in range(cores)]
+    # Create parallel activities
+    processes = [mp.Process(target=dummy_func,
+                            args=(random.randrange(sys.maxint),output))
+                 for x in range(cores)]
 
-for p in processes:
-    p.start()
+    for p in processes:
+        p.start()
 
-for p in processes:
-    p.join()
+    for p in processes:
+        p.join()
 
-results = [output.get() for p in processes]
-print(results)
+    results = [output.get() for p in processes]
+    print(results)
 
