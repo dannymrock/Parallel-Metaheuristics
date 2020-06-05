@@ -1,18 +1,16 @@
 import numpy as np
-import random
 import time
 import multiprocessing as mp
-import sys
 
 max_iters = 1000
 size = 20
-neigh_size = int(size*(size-1)/2)
+neigh_size = size * (size - 1) / 2
 tabu_tenure = 22
-
+target = 122455319
 
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
 # zero-base:                (7,15,13,16,3,10,2,18,6,8,0,14,5,12,9 ,1,4,19,17,11)
-flow= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
+distance= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
        [23,0,8,33,42,45,10,25,48,13,51,15,32,27,26,37,738,789,772,772],
        [29,8,0,40,49,52,3,33,51,21,55,7,35,31,25,45,732,782,765,765],
        [36,33,40,0,10,17,40,9,34,27,32,46,23,44,35,19,750,803,787,784],
@@ -33,7 +31,7 @@ flow= [[0,23,29,36,46,53,32,28,64,13,65,36,48,8,47,27,761,812,795,795],
        [795,772,765,787,787,781,762,786,758,784,764,759,764,795,753,803,86,32,0,77],
        [795,772,765,784,782,776,762,784,753,784,758,759,760,796,751,801,34,53,77,0]]
 
-distance=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0, 378, 239, 1, 1],
+flow=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0, 378, 239, 1, 1],
           [0, 0, 336, 0, 1, 0, 0, 3, 0, 1, 2109, 0, 130, 0, 0, 0, 2, 0, 0, 241],
           [5134, 0, 0, 0, 5811, 0, 0, 458, 11, 127, 0, 18012, 28, 0, 7, 0, 97, 4, 23, 0],
           [3896, 0, 0, 0, 2, 41453, 206, 6590, 16724, 0, 0, 375, 0, 0, 2474, 1868, 43487, 0, 0, 0],
@@ -55,17 +53,17 @@ distance=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0
           [1, 0, 0, 211, 12, 102, 15831, 0, 26, 19, 0, 0, 129, 3, 0, 524, 0, 0, 4, 0]]
 
 def compute_cost(sol):
-  cost=0
+  cost = 0
   for i in range(size):
     for j in range(size):
-        cost+=distance[i][j] * flow[sol[i]][sol[j]]
+        cost += distance[i][j] * flow[sol[i]][sol[j]]
   return cost
 
 def swap_moves(sol_n):
   # The last two positions of the vector are used to keep the swaped
   # variables' indexes
-  neighbors = np.zeros((neigh_size, size+2), dtype=int)
-  idx=0
+  neighbors = np.zeros((int(neigh_size), size + 2), dtype=int)
+  idx = 0
   for i in range(size):
     for j in range(i+1, size):
       # performing swap
@@ -75,20 +73,21 @@ def swap_moves(sol_n):
       neighbors[idx, -2:] = [i,j]
       # undoing swap
       sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
-      idx+=1
+      idx += 1
   return neighbors
 
-def run_search(seed, output):
-  rand = random.Random(seed)
+def run_search(seed, output, tid, v):
+  print("task id %d seed %d" % (tid, seed))
+  np.random.seed(seed)
   num_iter = 0
-  curnt_sol = rand.sample(range(size), size)
-  best_soln = curnt_sol
+  curnt_sol = np.random.permutation(size)
+  best_sol = curnt_sol
   best_cost = curnt_cost = compute_cost(curnt_sol)
   print("Initial: %s cost %s " % (curnt_sol, best_cost))
 
   tabu_list = np.full((size, size), -1, dtype=int)
   
-  while num_iter < max_iters:
+  while (num_iter < max_iters) & (curnt_cost > target) & (v.value == 0):
     # get all moves into neighbors
     neighbors = swap_moves(curnt_sol)  
     # holds the costs of the neighbors
@@ -105,8 +104,8 @@ def run_search(seed, output):
     # TODO: if there are two o more best moves, select randomly one of them
     for index in rank:
       swap = neighbors[index, -2:]
-      id_i=swap[0]
-      id_j=swap[1]
+      id_i = swap[0]
+      id_j = swap[1]
       not_tabu =  tabu_list[id_i][neighbors[index,id_j]] < num_iter
       not_tabu |= tabu_list[id_j][neighbors[index,id_i]] < num_iter  
       if not_tabu:
@@ -117,11 +116,15 @@ def run_search(seed, output):
           best_sol = curnt_sol
           best_cost = curnt_cost
           print("Found best sol. so far %s cost: %s iter= %s"
-                % (best_soln, best_cost, num_iter))
+                % (best_sol, best_cost, num_iter))
 
         # update tabu list
-        tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
-        tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
+        # t1 = round(rand.uniform(0.2, 1.2)*tabu_tenure)
+        # t2 = round(rand.uniform(0.2, 1.2)*tabu_tenure)
+        t1 = round((np.random.random_sample() ** 3) * 8 * size)
+        t2 = round((np.random.random_sample() ** 3) * 8 * size)
+        tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
+        tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
         break
       else:
         # print("is Tabu")
@@ -130,41 +133,52 @@ def run_search(seed, output):
           best_sol = curnt_sol =  neighbors[index,:-2].tolist()
           best_cost = curnt_cost = cost[index]
           print("Aspired: found best sol. so far %s cost: %s iter= %s"
-                % (best_soln, best_cost, num_iter))
+                % (best_sol, best_cost, num_iter))
+
           # update tabu list
-          tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
-          tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
+          t1 = round((np.random.random_sample() ** 3) * 8 * size)
+          t2 = round((np.random.random_sample() ** 3) * 8 * size)
+          # t1 = round(rand.uniform(0.2, 1.8)*tabu_tenure)
+          # t2 = round(rand.uniform(0.2, 1.8)*tabu_tenure) 
+          tabu_list[id_i][neighbors[index,id_j]] = num_iter + t1
+          tabu_list[id_j][neighbors[index,id_i]] = num_iter + t2
           done = True
           break
         
     if not done:
-      print("Any movement has been done on this iteration!!!")
-    num_iter+=1
+      print("No movement has been done on this iteration!!!")
+    num_iter += 1
     if num_iter % 100 == 0:
       print(num_iter,curnt_cost)
 
-  print("Best sol %s cost: %s max_iters= %s" % (best_soln, best_cost , num_iter))
-  output.put((best_soln, best_cost, num_iter))
+  print("Best sol %s cost: %s max_iters= %s" % (best_sol, best_cost , num_iter))
+  v.value = 1
+  output.put((best_sol, best_cost, num_iter))
 
 # calling the main function, where the program starts running
 if __name__== "__main__":
 
   # Get number of cores    
-  cores = mp.cpu_count()
-  print("Number of processors: ", cores)
-
+  n = mp.cpu_count()
+  print("Number of processors: ", n)
+  
   # Set random seed
-  seed = input("Type a seed for your run (default: current system time): ")
+  print("seed: ")
+  seed = input("Type your seed (none for using current time as seed): ")
   if seed == '':
-    seed = int(time.time())   
-  random.seed(seed)
-  print("Seed:", seed)
+    seed = int(time.time())
+  else:
+    seed = int(seed)
+  np.random.seed(seed)
         
-  #Initialize Pool
+  #Initialize queue
   output = mp.Queue()
 
+  # Value to detect termination
+  v = mp.Value('i', 0)
+  v.value = 0
   # Create parallel activities
-  processes = [mp.Process(target=run_search, args=(random.randrange(sys.maxsize),output)) for x in range(cores)]
+  processes = [mp.Process(target=run_search, args=(np.random.randint(1000), output, tid, v)) for tid in range(n)]
 
   start = time.time()
   for p in processes:

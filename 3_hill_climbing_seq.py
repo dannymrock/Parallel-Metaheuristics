@@ -1,12 +1,9 @@
 import numpy as np
-import random
 import time
-import multiprocessing as mp
-import sys
 
 max_iters = 100
 size = 20
-neigh_size = int(size*(size-1)/2)
+neigh_size = size * (size-1) / 2
 
 
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
@@ -54,101 +51,83 @@ distance=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0
           [1, 0, 0, 211, 12, 102, 15831, 0, 26, 19, 0, 0, 129, 3, 0, 524, 0, 0, 4, 0]]
 
 def compute_cost(sol):
-  cost=0
+  cost = 0
   for i in range(size):
     for j in range(size):
-        cost+=distance[i][j] * flow[sol[i]][sol[j]]
+        cost += distance[i][j] * flow[sol[i]][sol[j]]
   return cost
 
-def swap_move(sol_n):
-    neighbors = np.zeros((neigh_size, size), dtype=int)
-    idx=0
+def swap_moves(sol_n):
+    neighbors=[]
     for i in range(size):
         for j in range(i+1, size):
-            sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
-            neighbors[idx] = sol_n
-            sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
-            idx=idx+1
+          sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
+          neighbors.append(sol_n.copy())
+          sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
     return neighbors
 
-def run_search(seed, output):
-    rand = random.Random(seed)
+def run_search(seed):
+    np.random.seed(seed)
     num_iter = 0
-    curnt_sol = rand.sample(range(size), size)
+    # initilizing hill climbing with a random permutation
+    curnt_sol = np.random.permutation(size)
+    # initializing best solutions and costs
     best_soln = curnt_sol
     best_cost = curnt_cost = compute_cost(curnt_sol)
     print("Initial: %s cost %s " % (curnt_sol, best_cost))
 
     # flag to signal the algorithm's termination
     flag_end = False
-    while (num_iter < max_iters and (not flag_end)):
 
-        neighbors = swap_move(curnt_sol)  # make a move to neighbors
+    # Start loop: Iterations
+    while ((num_iter < max_iters) and (not flag_end)):
+
+        neighbors = swap_moves(curnt_sol)  # make a move to neighbors
 
         # holds the cost of the neighbors
         cost = np.zeros((len(neighbors)))
-        
+
         # evaluate the cost of the candidate neighbors
         for index in range(len(neighbors)):
-            cost[index] = compute_cost(neighbors[index])  
-
-        rank = np.argsort(cost)  # sorted index based on cost
+            cost[index] = compute_cost(neighbors[index])
+            
+        ranked = np.argsort(cost)  # sorted index based on cost
 
         # flag to detect an improvement in the first best movement
         first_best = False
-
-        # for loop to select best move 
+        
+        # for loop to select best move
         # TODO: if there are two o more best moves, select randomly one of them
-        for index in rank:
+        for index in ranked:
             curnt_cost = cost[index]
             if  curnt_cost <  best_cost:
-                curnt_sol = best_soln = neighbors[index].tolist()
+                curnt_sol = best_soln = neighbors[index]
                 best_cost = curnt_cost
-                print("Found better sol %s cost: %s " % (best_soln, best_cost))
+                print("Found better on iteration %d sol %s cost: %s " % (num_iter, best_soln, best_cost))
                 first_best = True
 
             if (not first_best):
                 print("Local minimum found!!")
                 flag_end = True
                 break
-        num_iter+=1
-
-    print("Best sol %s cost: %s max_iters= %s" % (best_soln, best_cost , num_iter))
-    output.put((best_soln, best_cost, num_iter))
-
+        num_iter += 1
+    # End: Iterations
+    print("Best sol %s cost: %s max_iters= %s"
+          % (best_soln, best_cost , num_iter))
+    
+ 
 # calling the main function, where the program starts running
 if __name__== "__main__":
 
-    # Get number of cores    
-    cores = mp.cpu_count()
-    print("Number of processors: ", cores)
+  print("seed: ")
+  seed = input("Type your seed (none for using current time as seed): ")
+  if seed == '':
+    seed = int(time.time())
+  else:
+    seed = int(seed)
 
-    # Set random seed
-    seed = raw_input("Type a seed for your run (default: current system time): ")
-    if seed == '':
-        seed = int(time.time())   
-    random.seed(seed)
-    print("Seed:", seed)
-        
-    #Initialize Pool
-    output = mp.Queue()
-
-    # Create parallel activities
-    processes = [mp.Process(target=run_search, args=(random.randrange(sys.maxint),output)) for x in range(cores)]
-
-    start = time.time()
-    for p in processes:
-        p.start()
-
-    for p in processes:
-        p.join()
-
-    end = time.time()
-    print("time: %.4f s\n" % (end - start))
-
-
-    print("\nEnd parallel execution, results:")
-    for p in processes:
-        result = output.get()
-        print(p, result)
-    
+  start = time.time()
+  run_search(seed)
+  end = time.time()
+  print("time: %.4f s" % (end - start))
+  
