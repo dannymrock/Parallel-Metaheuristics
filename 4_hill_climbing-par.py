@@ -1,7 +1,6 @@
 import numpy as np
 import time
 import multiprocessing as mp
-import sys
 
 max_iters = 100
 size = 20
@@ -126,7 +125,6 @@ if __name__== "__main__":
     print("Number of processors: ", n)
 
     # Set random seed
-    print("seed: ")
     seed = input("Type your seed (none for using current time as seed): ")
     if seed == '':
       seed = int(time.time())

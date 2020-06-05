@@ -1,8 +1,6 @@
-import random
 import time
 import numpy as np
 
-print("seed: ")
 seed = input("Type your seed (none for using current time as seed): ")
 
 if seed == '':

@@ -152,7 +152,6 @@ if __name__== "__main__":
   print("Number of processors: ", n)
 
   # Set random seed
-  print("seed: ")
   seed = input("Type your seed (none for using current time as seed): ")
   if seed == '':
     seed = int(time.time())

@@ -118,8 +118,6 @@ def run_search(seed):
  
 # calling the main function, where the program starts running
 if __name__== "__main__":
-
-  print("seed: ")
   seed = input("Type your seed (none for using current time as seed): ")
   if seed == '':
     seed = int(time.time())
