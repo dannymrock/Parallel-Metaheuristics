@@ -27,6 +27,8 @@ if __name__ == '__main__':
     print(seed)
     np.random.seed(seed)
 
+    input_vector = np.random.randint(0, 100, n)
+    print(input_vector)
 
     ### Sequential Execution: we want to execute dummy_func "n" times
     print("Starting sequential execution")
@@ -34,7 +36,7 @@ if __name__ == '__main__':
     fifo_queue = queue.Queue()
     start = time.time()         # taking initial time (from this line)
     for i in range(n):
-        dummy_func(np.random.randint(100), fifo_queue)
+        dummy_func(input_vector[i], fifo_queue)
     end = time.time()           # taking end time
     # Printing results 
     results = [fifo_queue.get() for i in range(n)]
@@ -50,7 +52,7 @@ if __name__ == '__main__':
     output = mp.Queue()
     # Create parallel activities (objects)
     processes = [mp.Process(target=dummy_func,
-                            args=(np.random.randint(100),output))
+                            args=(input_vector[x], output))
                  for x in range(n)]
 
     start = time.time()         # taking initial time (from this line)
