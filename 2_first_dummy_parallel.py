@@ -1,68 +1,49 @@
-"""Compare sequential vs parallel execution for a dummy workload."""
-import argparse
+"""Compare sequential versus parallel execution for a dummy workload."""
 import multiprocessing as mp
 import queue
 import time
-from typing import List, Sequence, Union
+from typing import Iterable, List
 
 import numpy as np
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Dummy parallel workload comparison.")
-    parser.add_argument(
-        "--seed",
-        type=int,
-        help="Base seed for generating input seeds (default: current time).",
-    )
-    parser.add_argument(
-        "--processes",
-        type=int,
-        help="Number of workers to run (default: CPU count).",
-    )
-    parser.add_argument(
-        "--iterations",
-        type=int,
-        default=1_000_000,
-        help="Iterations per worker (default: 1_000_000).",
-    )
-    return parser.parse_args()
+ITERATIONS_PER_WORKER = 1_000_000
 
 
-def resolve_seed(seed_arg: int | None) -> int:
+def prompt_seed() -> int:
+    """Request a seed from stdin, defaulting to the current time."""
     try:
-        if seed_arg is not None:
-            return seed_arg
-        raw = input("Type your seed (empty uses the current time): ").strip()
-        return int(raw) if raw else int(time.time())
+        raw = input("Type your seed (none uses current time): ").strip()
     except EOFError:
-        return int(time.time())
+        raw = ""
+    return int(raw) if raw else int(time.time())
 
 
-def dummy_func(seed: int, iterations: int, output: Union[queue.Queue, mp.queues.Queue]) -> None:
-    """Simulate work and emit a final value into the provided queue."""
+def dummy_func(seed: int, iterations: int, output_queue) -> None:
+    """Simulate work and push a result into the provided queue."""
     rng = np.random.default_rng(seed)
     last_val = 0.0
     for i in range(1, iterations):
         last_val = 234.2 / i * rng.integers(100)
-    output.put(last_val)
+    output_queue.put(last_val)
 
 
-def run_sequential(seeds: Sequence[int], iterations: int) -> List[float]:
+def run_sequential(seeds: Iterable[int], iterations: int) -> List[float]:
+    """Execute dummy_func sequentially for each seed and return outputs."""
     fifo_queue: queue.Queue = queue.Queue()
     start = time.time()
     for seed in seeds:
-        dummy_func(seed, iterations, fifo_queue)
+        dummy_func(int(seed), iterations, fifo_queue)
     results = [fifo_queue.get() for _ in seeds]
     duration = time.time() - start
     print(f"Sequential execution time: {duration:.4f} s")
     return results
 
 
-def run_parallel(seeds: Sequence[int], iterations: int) -> List[float]:
+def run_parallel(seeds: Iterable[int], iterations: int) -> List[float]:
+    """Execute dummy_func in parallel for each seed and return outputs."""
     output: mp.Queue = mp.Queue()
     processes = [
-        mp.Process(target=dummy_func, args=(seed, iterations, output))
+        mp.Process(target=dummy_func, args=(int(seed), iterations, output))
         for seed in seeds
     ]
 
@@ -78,24 +59,24 @@ def run_parallel(seeds: Sequence[int], iterations: int) -> List[float]:
 
 
 def main() -> None:
-    args = parse_args()
-    worker_count = args.processes or mp.cpu_count()
+    """Compare sequential versus parallel execution of a dummy workload."""
+    worker_count = mp.cpu_count()
     print(f"Number of processors: {worker_count}")
 
-    base_seed = resolve_seed(args.seed)
+    base_seed = prompt_seed()
     base_rng = np.random.default_rng(base_seed)
-    print(f"Base seed: {base_seed}")
-
     input_vector = base_rng.integers(0, 100, worker_count)
+
+    print(f"Base seed: {base_seed}")
     print(f"Input vector: {input_vector}")
 
     print("Starting sequential execution")
-    seq_results = run_sequential(input_vector, args.iterations)
-    print(seq_results)
+    sequential_results = run_sequential(input_vector, ITERATIONS_PER_WORKER)
+    print(sequential_results)
 
     print("Starting parallel execution")
-    par_results = run_parallel(input_vector, args.iterations)
-    print(par_results)
+    parallel_results = run_parallel(input_vector, ITERATIONS_PER_WORKER)
+    print(parallel_results)
 
 
 if __name__ == "__main__":

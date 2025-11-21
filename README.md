@@ -14,3 +14,12 @@ Currently, the implemented metaheuristics are not so efficient, there are some c
 These examples are useful to explore how to implement parallelism in python.
 
 Enjoy it!
+
+## Usage
+
+- Install NumPy (`pip install numpy`) if needed.
+- Run any script directly, e.g.:
+  - `python 1_warmup_example.py --seed 123 --count 5`
+  - `python 4_hill_climbing-par.py`
+  - `python 5_tabu_search-par.py --processes 4 --max-iters 500 --seed 42`
+  - `python 6_tabu_search-par-td.py --processes 4 --target 122455319`

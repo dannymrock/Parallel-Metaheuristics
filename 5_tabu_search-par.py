@@ -1,3 +1,5 @@
+"""Parallel Tabu Search prototype for the Tai20b QAP instance."""
+import argparse
 import numpy as np
 import time
 import multiprocessing as mp
@@ -6,6 +8,7 @@ max_iters = 1000
 size = 20
 neigh_size = size * (size - 1) / 2
 tabu_tenure = 22
+swap_pairs = np.array([(i, j) for i in range(size) for j in range(i + 1, size)], dtype=int)
 
 # Tai20b 20 122455319 (OPT) (8,16,14,17,4,11,3,19,7,9,1,15,6,13,10,2,5,20,18,12)
 # zero-base:                (7,15,13,16,3,10,2,18,6,8,0,14,5,12,9 ,1,4,19,17,11)
@@ -52,112 +55,140 @@ distance=[[0, 1341, 283, 17514, 0, 5387, 10, 0, 0, 0, 17307, 98, 122, 1325, 0, 0
           [1, 0, 0, 211, 12, 102, 15831, 0, 26, 19, 0, 0, 129, 3, 0, 524, 0, 0, 4, 0]]
 
 def compute_cost(sol):
+  """Return objective value for a permutation solution."""
   cost = 0
   for i in range(size):
     for j in range(size):
         cost += distance[i][j] * flow[sol[i]][sol[j]]
   return cost
 
-def swap_moves(sol_n):
+def delta_swap(cost_sol, i, j):
+  """Compute cost delta for swapping positions i and j within the current solution."""
+  if i == j:
+    return 0
+  si = cost_sol[i]
+  sj = cost_sol[j]
+  delta = 0
+  for k in range(size):
+    if k == i or k == j:
+      continue
+    sk = cost_sol[k]
+    delta += (distance[i][k] - distance[j][k]) * (flow[sj][sk] - flow[si][sk])
+    delta += (distance[k][i] - distance[k][j]) * (flow[sk][sj] - flow[sk][si])
+  delta += (distance[i][j] - distance[j][i]) * (flow[sj][si] - flow[si][sj])
+  return delta
+
+def swap_moves(sol_n, neighbors):
+  """Fill a neighbors buffer with all swap moves (stores swap indices in last columns)."""
   # The last two positions of the vector are used to keep the swaped
   # variables' indexes
-  neighbors = np.zeros((int(neigh_size), size + 2), dtype=int)
-  idx = 0
-  for i in range(size):
-    for j in range(i+1, size):
-      # performing swap
-      sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
-      # storing neighbor in "neighbors" data structure
-      neighbors[idx, :-2] = sol_n
-      neighbors[idx, -2:] = [i,j]
-      # undoing swap
-      sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
-      idx += 1
+  for idx, (i, j) in enumerate(swap_pairs):
+    # performing swap
+    sol_n[j], sol_n[i] = sol_n[i], sol_n[j]
+    # storing neighbor in "neighbors" data structure
+    neighbors[idx, :-2] = sol_n
+    neighbors[idx, -2:] = [i, j]
+    # undoing swap
+    sol_n[i], sol_n[j] = sol_n[j], sol_n[i]
   return neighbors
 
 def run_search(seed, output, tid):
+  """Execute one Tabu Search walk; pushes best solution and cost to output queue."""
   print("task id %d seed %d" % (tid, seed))
   np.random.seed(seed)
   num_iter = 0
   curnt_sol = np.random.permutation(size)
-  best_soln = curnt_sol
+  best_soln = curnt_sol.copy()
   best_cost = curnt_cost = compute_cost(curnt_sol)
-  print("Initial: %s cost %s " % (curnt_sol, best_cost))
+  print("task id %d Initial: %s cost %s " % (tid, curnt_sol, best_cost))
 
   tabu_list = np.full((size, size), -1, dtype=int)
   
   while num_iter < max_iters:
-    # get all moves into neighbors
-    neighbors = swap_moves(curnt_sol)  
-    # holds the costs of the neighbors
-    cost = np.zeros((len(neighbors)))
+    cost = np.zeros((len(swap_pairs)))
 
-    # evaluate the cost of all candidate neighbors
-    for index in range(len(neighbors)):
-      cost[index] = compute_cost(neighbors[index, :-2])  
+    # evaluate the cost of all candidate neighbors using incremental deltas
+    for idx, (i, j) in enumerate(swap_pairs):
+      cost[idx] = curnt_cost + delta_swap(curnt_sol, i, j)
 
     rank = np.argsort(cost)  # sorted index based on cost
 
     done = False
-    # for loop to select best move
-    # TODO: if there are two o more best moves, select randomly one of them
+    best_move_cost = None
+    best_indices = []
     for index in rank:
-      swap = neighbors[index, -2:]
-      id_i = swap[0]
-      id_j = swap[1]
-      not_tabu =  tabu_list[id_i][neighbors[index,id_j]] < num_iter
-      not_tabu |= tabu_list[id_j][neighbors[index,id_i]] < num_iter  
+      current_cost = cost[index]
+      if best_move_cost is not None and current_cost > best_move_cost:
+        break
+      id_i, id_j = swap_pairs[index]
+      val_i = curnt_sol[id_i]
+      val_j = curnt_sol[id_j]
+      not_tabu =  tabu_list[id_i][val_j] < num_iter
+      not_tabu |= tabu_list[id_j][val_i] < num_iter
+      aspirational = current_cost < best_cost
+      if not_tabu or aspirational:
+        if best_move_cost is None:
+          best_move_cost = current_cost
+        if current_cost == best_move_cost:
+          best_indices.append(index)
+    if best_indices:
+      index = np.random.choice(best_indices)
+      id_i, id_j = swap_pairs[index]
+      val_i = curnt_sol[id_i]
+      val_j = curnt_sol[id_j]
+      not_tabu =  tabu_list[id_i][val_j] < num_iter
+      not_tabu |= tabu_list[id_j][val_i] < num_iter
       if not_tabu:
-        curnt_sol = neighbors[index,:-2].tolist()
+        curnt_sol[id_i], curnt_sol[id_j] = curnt_sol[id_j], curnt_sol[id_i]
         curnt_cost = cost[index]
         done = True
         if curnt_cost < best_cost:
-          best_sol = curnt_sol
+          best_soln = curnt_sol.copy()
           best_cost = curnt_cost
-          print("Found best sol. so far %s cost: %s iter= %s"
-                % (best_soln, best_cost, num_iter))
+          print("task id %d Found best sol. so far %s cost: %s iter= %s"
+                % (tid, best_soln, best_cost, num_iter))
 
-        # update tabu list
-        tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
-        tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
-        break
+        tabu_list[id_i][val_j] = num_iter + tabu_tenure
+        tabu_list[id_j][val_i] = num_iter + tabu_tenure
       else:
-        # print("is Tabu")
-        # aspiration criterium
         if cost[index] < best_cost:
-          best_sol = curnt_sol =  neighbors[index,:-2].tolist()
+          curnt_sol[id_i], curnt_sol[id_j] = curnt_sol[id_j], curnt_sol[id_i]
+          best_soln = curnt_sol.copy()
           best_cost = curnt_cost = cost[index]
-          print("Aspired: found best sol. so far %s cost: %s iter= %s"
-                % (best_soln, best_cost, num_iter))
-          # update tabu list
-          tabu_list[id_i][neighbors[index,id_j]] = num_iter + tabu_tenure
-          tabu_list[id_j][neighbors[index,id_i]] = num_iter + tabu_tenure
+          print("task id %d Aspired: found best sol. so far %s cost: %s iter= %s"
+                % (tid, best_soln, best_cost, num_iter))
+          tabu_list[id_i][val_j] = num_iter + tabu_tenure
+          tabu_list[id_j][val_i] = num_iter + tabu_tenure
           done = True
-          break
         
-    if not done:
-      print("No movement has been done on this iteration!!!")
     num_iter += 1
     if num_iter % 100 == 0:
-      print(num_iter,curnt_cost)
+      print("task id %d %s %s" % (tid, num_iter, curnt_cost))
 
-  print("Best sol %s cost: %s max_iters= %s" % (best_soln, best_cost , num_iter))
+  print("task id %d Best sol %s cost: %s max_iters= %s" % (tid, best_soln, best_cost , num_iter))
   output.put((best_soln, best_cost, num_iter))
+
+def parse_args():
+  """CLI parameters for controlling seeds, processes, and iteration budget."""
+  parser = argparse.ArgumentParser(description="Parallel Tabu Search for Tai20b.")
+  parser.add_argument("--seed", type=int, help="Base seed (default: current time).")
+  parser.add_argument("--processes", type=int, help="Number of worker processes (default: CPU count).")
+  parser.add_argument("--max-iters", type=int, help=f"Maximum iterations per worker (default: {max_iters}).")
+  return parser.parse_args()
 
 # calling the main function, where the program starts running
 if __name__== "__main__":
+  args = parse_args()
 
-  # Get number of cores    
-  n = mp.cpu_count()
+  if args.max_iters is not None:
+    max_iters = args.max_iters
+
+  # Get number of cores
+  n = args.processes or mp.cpu_count()
   print("Number of processors: ", n)
 
-  # Set random seed
-  seed = input("Type your seed (none for using current time as seed): ")
-  if seed == '':
-    seed = int(time.time())
-  else:
-    seed = int(seed)
-  np.random.seed(seed)
+  base_seed = args.seed if args.seed is not None else int(time.time())
+  np.random.seed(base_seed)
         
   #Initialize queue
   output = mp.Queue()
