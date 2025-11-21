@@ -1,6 +1,7 @@
 """Parallel Tabu Search implementation for the QAP Tai20b instance."""
 import argparse
 import multiprocessing as mp
+from multiprocessing.sharedctypes import Synchronized
 import time
 from typing import Sequence
 
@@ -93,7 +94,7 @@ def run_search(
     seed: int,
     output: mp.Queue,
     task_id: int,
-    termination_flag: mp.Value,
+    termination_flag: Synchronized,
     max_iters: int = MAX_ITERS,
     target_cost: int = TARGET_COST,
 ) -> None:
