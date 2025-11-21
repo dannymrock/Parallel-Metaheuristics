@@ -1,71 +1,102 @@
-import time
+"""Compare sequential vs parallel execution for a dummy workload."""
+import argparse
 import multiprocessing as mp
-import numpy as np
 import queue
+import time
+from typing import List, Sequence, Union
 
-# Dummy function simulates the execution of a metaheuristic method
-def dummy_func (seed, output):
-    print(seed)
-    np.random.seed(seed)
-    for i in range(1,1000000):                  # un gran ciclo
-        x = 234.2 / i * np.random.randint(100)  # una división en punto flotante     
-    output.put(x) 
+import numpy as np
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Dummy parallel workload comparison.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Base seed for generating input seeds (default: current time).",
+    )
+    parser.add_argument(
+        "--processes",
+        type=int,
+        help="Number of workers to run (default: CPU count).",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1_000_000,
+        help="Iterations per worker (default: 1_000_000).",
+    )
+    return parser.parse_args()
 
-if __name__ == '__main__':
-    # Get number of cores    
-    n = mp.cpu_count()
-    print("Number of processors: ", n)
 
-    # Set random seed
-    seed = input("Type your seed (none for using current time as seed): ")
-    if seed == '':
-        seed = int(time.time())
-    else:
-        seed = int(seed)
-    print(seed)
-    np.random.seed(seed)
+def resolve_seed(seed_arg: int | None) -> int:
+    try:
+        if seed_arg is not None:
+            return seed_arg
+        raw = input("Type your seed (empty uses the current time): ").strip()
+        return int(raw) if raw else int(time.time())
+    except EOFError:
+        return int(time.time())
 
-    input_vector = np.random.randint(0, 100, n)
-    print(input_vector)
 
-    ### Sequential Execution: we want to execute dummy_func "n" times
+def dummy_func(seed: int, iterations: int, output: Union[queue.Queue, mp.queues.Queue]) -> None:
+    """Simulate work and emit a final value into the provided queue."""
+    rng = np.random.default_rng(seed)
+    last_val = 0.0
+    for i in range(1, iterations):
+        last_val = 234.2 / i * rng.integers(100)
+    output.put(last_val)
+
+
+def run_sequential(seeds: Sequence[int], iterations: int) -> List[float]:
+    fifo_queue: queue.Queue = queue.Queue()
+    start = time.time()
+    for seed in seeds:
+        dummy_func(seed, iterations, fifo_queue)
+    results = [fifo_queue.get() for _ in seeds]
+    duration = time.time() - start
+    print(f"Sequential execution time: {duration:.4f} s")
+    return results
+
+
+def run_parallel(seeds: Sequence[int], iterations: int) -> List[float]:
+    output: mp.Queue = mp.Queue()
+    processes = [
+        mp.Process(target=dummy_func, args=(seed, iterations, output))
+        for seed in seeds
+    ]
+
+    start = time.time()
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+    results = [output.get() for _ in processes]
+    duration = time.time() - start
+    print(f"Parallel execution time: {duration:.4f} s")
+    return results
+
+
+def main() -> None:
+    args = parse_args()
+    worker_count = args.processes or mp.cpu_count()
+    print(f"Number of processors: {worker_count}")
+
+    base_seed = resolve_seed(args.seed)
+    base_rng = np.random.default_rng(base_seed)
+    print(f"Base seed: {base_seed}")
+
+    input_vector = base_rng.integers(0, 100, worker_count)
+    print(f"Input vector: {input_vector}")
+
     print("Starting sequential execution")
-    # Create a simple queue
-    fifo_queue = queue.Queue()
-    start = time.time()         # taking initial time (from this line)
-    for i in range(n):
-        dummy_func(input_vector[i], fifo_queue)
-    end = time.time()           # taking end time
-    # Printing results 
-    results = [fifo_queue.get() for i in range(n)]
-    print(results)
+    seq_results = run_sequential(input_vector, args.iterations)
+    print(seq_results)
 
-    print('Sequential execution time:', (end - start))
-
-
-    ### Parallel Execution: we want to execute dummy_func "n" times... in Parallel!
     print("Starting parallel execution")
-    
-    # Create concurrent queue
-    output = mp.Queue()
-    # Create parallel activities (objects)
-    processes = [mp.Process(target=dummy_func,
-                            args=(input_vector[x], output))
-                 for x in range(n)]
+    par_results = run_parallel(input_vector, args.iterations)
+    print(par_results)
 
-    start = time.time()         # taking initial time (from this line)
-    # starting n parallel activities
-    for p in processes:
-        p.start()
 
-    # Waiting for the termination of the n parallel activities
-    for p in processes:
-        p.join()
-    end = time.time()           # taking end time
-    
-    results = [output.get() for p in processes]
-    print(results)
-
-    print('Parallel execution time:', (end - start))
+if __name__ == "__main__":
+    main()
